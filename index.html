@@ -66,6 +66,9 @@
       <label>維修項目：</label>
       <div id="serviceItems" class="service-items-container"></div>
       <button type="button" onclick="addServiceItem()">新增項目</button>
+	<div id="serviceTotal" style="margin-top:8px; font-weight:bold;">
+  	總金額：<span id="serviceTotalAmount">0</span>
+	</div>
       <label>技師姓名：</label>
       <select id="technicianName" required>
         <option value="Kevin">Kevin</option>
@@ -172,6 +175,12 @@ function resetForm() {
   document.getElementById('serviceItems').innerHTML = '';
   document.getElementById('editIndex').value = '';
 }
+// 計算並顯示所有 serviceItems 的總金額
+function updateServiceTotal() {
+  const inputs = document.querySelectorAll('.item-cost');
+  const total = Array.from(inputs).reduce((sum, inp) => sum + (parseFloat(inp.value) || 0), 0);
+  document.getElementById('serviceTotalAmount').textContent = total;
+}
 
 function addServiceItem(item = { name: '', cost: '' }) {
   const container = document.getElementById('serviceItems');
@@ -180,10 +189,40 @@ function addServiceItem(item = { name: '', cost: '' }) {
   div.innerHTML = `
     <input type="text" class="item-name" placeholder="項目名稱" value="${item.name}">
     <input type="number" class="item-cost" placeholder="金額" value="${item.cost}">
-    <button type="button" class="remove-item" onclick="this.parentElement.remove()">刪除</button>
+    <button type="button" class="remove-item">刪除</button>
   `;
   container.appendChild(div);
+
+  const nameInput = div.querySelector('.item-name');
+  const costInput = div.querySelector('.item-cost');
+  const delBtn   = div.querySelector('.remove-item');
+
+  // 刪除時更新總金額
+  delBtn.addEventListener('click', () => {
+    div.remove();
+    updateServiceTotal();
+  });
+
+  // 輸入時更新總金額
+  costInput.addEventListener('input', updateServiceTotal);
+
+  // 按 Enter 自動新增下一筆，且 focus 到項目名稱
+  costInput.addEventListener('keypress', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      updateServiceTotal();
+      addServiceItem();
+      const rows = document.querySelectorAll('.service-item-row');
+      // 取最後一列的名稱欄位並 focus
+      const lastName = rows[rows.length - 1].querySelector('.item-name');
+      lastName.focus();
+    }
+  });
+
+  // 新增時也更新一次總金額
+  updateServiceTotal();
 }
+
 
 function deleteWorkOrder(index) {
   if (!confirm('確定要刪除此工單嗎？')) return;
