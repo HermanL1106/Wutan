@@ -20,6 +20,7 @@
     th { position: sticky; top: 0; background: #f9f9f9; z-index: 1; }
 	table td:nth-child(5) { white-space: nowrap; }
 	table td:nth-child(3) { white-space: nowrap; }
+	table thead th { white-space: nowrap; }
   </style>
 
   <!-- Firebase SDK -->
@@ -68,11 +69,12 @@
         <option value="Kevin">Kevin</option>
         <option value="Hank">Hank</option>
       </select>
-      <label>狀態：</label>
+      <label>付款方式：</label>
       <select id="status">
-        <option value="待處理">待處理</option>
-        <option value="處理中">處理中</option>
-        <option value="已完成">已完成</option>
+        <option value="現金">現金</option>
+        <option value="刷卡">刷卡</option>
+        <option value="轉帳">轉帳</option>
+	<option value="街口">街口</option>
       </select>
       <label>日期：</label>
       <input type="date" id="orderDate" required>
@@ -95,7 +97,7 @@
           <th>維修項目</th>
           <th>總金額</th>
           <th>技師</th>
-          <th>狀態</th>
+          <th>付款方式</th>
           <th>日期</th>
           <th>操作</th>
         </tr>
