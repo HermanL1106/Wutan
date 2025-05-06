@@ -18,6 +18,8 @@
     .remove-item { background: red; color: white; border: none; padding: 5px 10px; cursor: pointer; }
     .action-buttons { display: flex; justify-content: center; gap: 10px; }
     th { position: sticky; top: 0; background: #f9f9f9; z-index: 1; }
+	table td:nth-child(5) { white-space: nowrap; }
+	table td:nth-child(3) { white-space: nowrap; }
   </style>
 
   <!-- Firebase SDK -->
@@ -29,9 +31,12 @@
   <div class="container">
     <h1>電動機車工單系統</h1>
 
-    <input type="file" id="importFile" accept=".csv">
-    <button onclick="importWorkOrders()">匯入 CSV 工單</button>
-    <button onclick="exportWorkOrders()">匯出工單 CSV</button>
+	<div id="csvControls" style="display:none; margin-top: 20px;">
+  <input type="file" id="importFile" accept=".csv">
+  <button onclick="importWorkOrders()">匯入 CSV 工單</button>
+  <button onclick="exportWorkOrders()">匯出工單 CSV</button>
+</div>
+<button type="button" onclick="toggleCSVControls()">顯示/隱藏 CSV 功能</button>
 
     <div style="margin-top: 20px;">
       <input type="text" id="searchPlate" placeholder="搜尋車牌或工單編號">
@@ -350,7 +355,11 @@ db.collection("workOrders").get().then((querySnapshot) => {
 
   pageData.forEach((order, index) => {
     const globalIndex = start + index;
-    const items = order.serviceItems.map((item, i) => `${i + 1}. ${item.name}`).join('<br>');
+// 顯示名稱與價格
+	const items = order.serviceItems
+  .map((item, i) => `${i + 1}. ${item.name} - ${item.cost}`)
+  .join('<br>');
+
     const row = document.createElement('tr');
     row.innerHTML = `
       <td><input type="checkbox" class="select-order" data-index="${globalIndex}"></td>
@@ -435,7 +444,16 @@ function renderPagination(totalPages) {
   pageInfo.textContent = `第 ${currentPage} / ${totalPages} 頁`;
   pagination.appendChild(pageInfo);
 }
-
+	const CSV_PASSWORD = 'admin123';
+function toggleCSVControls() {
+  const pwd = prompt('請輸入密碼以顯示或隱藏 CSV 功能');
+  if (pwd === CSV_PASSWORD) {
+    const csvDiv = document.getElementById('csvControls');
+    csvDiv.style.display = csvDiv.style.display === 'none' ? 'block' : 'none';
+  } else {
+    alert('密碼錯誤');
+  }
+}
   </script>
 </body>
 </html>
