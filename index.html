@@ -186,30 +186,43 @@
 
     document.getElementById('workOrderForm').addEventListener('submit', function(e) {
       e.preventDefault();
-      const ownerVal = document.getElementById('ownerName').value.trim() || 'NA';
-      const phoneVal = document.getElementById('phoneNumber').value.trim() || 'NA';
-      const index = document.getElementById('editIndex').value;
-      const serviceItems = Array.from(document.querySelectorAll('.service-item-row')).map(row => ({
-        name: row.querySelector('.item-name').value.trim(),
-        cost: parseFloat(row.querySelector('.item-cost').value)
-      }));
-      const totalAmount = serviceItems.reduce((sum, itm) => sum + (itm.cost || 0), 0);
-      const newOrder = {
-        workOrderNumber: document.getElementById('orderDate').value.replace(/-/g,'') +
-          '-' + (index !== '' ? workOrders[index].workOrderNumber.split('-')[1] :
-          String(workOrders.length+1).padStart(3,'0')),
-        ownerName: ownerVal,
-        phoneNumber: phoneVal,
-        plateNumber: document.getElementById('plateNumber').value.trim(),
-        mileage: document.getElementById('mileage').value.trim(),
-        serviceItems,
-        technicianName: document.getElementById('technicianName').value,
-        status: document.getElementById('status').value,
-        date: document.getElementById('orderDate').value,
-        totalAmount
-      };
-      if (!index) workOrders.push(newOrder);
-      else workOrders[index] = newOrder;
+        // 1. 讀取並建構 newOrder（含每月重置編號邏輯）
+  const ownerVal     = document.getElementById('ownerName').value.trim() || 'NA';
+  const phoneVal     = document.getElementById('phoneNumber').value.trim()  || 'NA';
+  const index        = document.getElementById('editIndex').value;
+  const serviceItems = Array.from(document.querySelectorAll('.service-item-row')).map(row => ({
+    name: row.querySelector('.item-name').value.trim(),
+    cost: parseFloat(row.querySelector('.item-cost').value)
+  }));
+  const totalAmount = serviceItems.reduce((sum, itm) => sum + (itm.cost || 0), 0);
+
+  // 新增：計算每月流水號
+  const dateVal    = document.getElementById('orderDate').value;         // e.g. "2025-05-06"
+  const datePrefix = dateVal.replace(/-/g, '');                          // e.g. "20250506"
+  let seqStr;
+  if (index !== '') {
+    // 編輯既有工單，保留原流水號
+    seqStr = workOrders[index].workOrderNumber.split('-')[1];
+  } else {
+    // 新增，計算同年同月已有幾筆，再 +1
+    const monthKey      = dateVal.slice(0, 7);                            // e.g. "2025-05"
+    const thisMonthList = workOrders.filter(o => o.date.startsWith(monthKey));
+    const nextSeq       = thisMonthList.length + 1;                       // 第 1 筆、第 2 筆…
+    seqStr = String(nextSeq).padStart(3, '0');                            // "001","002"…
+  }
+
+  const newOrder = {
+    workOrderNumber: `${datePrefix}-${seqStr}`,
+    ownerName:       ownerVal,
+    phoneNumber:     phoneVal,
+    plateNumber:     document.getElementById('plateNumber').value.trim(),
+    mileage:         document.getElementById('mileage').value.trim(),
+    serviceItems,
+    technicianName:  document.getElementById('technicianName').value,
+    status:          document.getElementById('status').value,
+    date:            dateVal,
+    totalAmount
+  };
 
       saveToLocalStorage();
       displayWorkOrders(workOrders);
@@ -261,31 +274,59 @@
 
       updateServiceTotal();
     }
+	// 單筆刪除
+function deleteWorkOrder(i) {
+  // 要求密碼
+  const pwd = prompt('請輸入密碼以刪除此工單');
+  if (pwd !== CSV_PASSWORD) {
+    alert('密碼錯誤');
+    return;
+  }
+  // 確認刪除
+  if (!confirm('確定要刪除此工單嗎？')) return;
 
-    function deleteWorkOrder(i) {
-      if (!confirm('確定刪除?')) return;
-      const d = workOrders.splice(i,1)[0];
-      saveToLocalStorage();
-      displayWorkOrders(workOrders);
-      db.collection("workOrders").doc(d.workOrderNumber).delete();
-    }
+  const deletedOrder = workOrders.splice(i, 1)[0];
+  saveToLocalStorage();
+  displayWorkOrders(workOrders);
+  db.collection("workOrders").doc(deletedOrder.workOrderNumber).delete()
+    .then(() => alert('工單已刪除 (含 Firebase)'))
+    .catch(error => console.error("Firebase 刪除錯誤:", error));
+}
 
-    function deleteSelectedOrders() {
-      const sel = Array.from(document.querySelectorAll('.select-order:checked'));
-      if (!sel.length) { alert('請先勾選'); return; }
-      if (!confirm(`刪除${sel.length}筆?`)) return;
-      sel.map(cb => parseInt(cb.dataset.index))
-         .sort((a,b) => b-a)
-         .forEach(idx => {
-           const d = workOrders.splice(idx,1)[0];
-           db.collection("workOrders").doc(d.workOrderNumber).delete();
-         });
-      saveToLocalStorage();
-      displayWorkOrders(workOrders);
-    }
+// 批量刪除
+function deleteSelectedOrders() {
+  // 要求密碼
+  const pwd = prompt('請輸入密碼以刪除所選工單');
+  if (pwd !== CSV_PASSWORD) {
+    alert('密碼錯誤');
+    return;
+  }
+  const selected = Array.from(document.querySelectorAll('.select-order:checked'));
+  if (!selected.length) {
+    alert('請先勾選要刪除的工單');
+    return;
+  }
+  if (!confirm(`確定要刪除已選取的 ${selected.length} 筆工單嗎？`)) return;
 
-    function editWorkOrder(i) {
-      const o = workOrders[i];
+  // 依序刪除
+  const indexes = selected
+    .map(cb => parseInt(cb.getAttribute('data-index')))
+    .sort((a, b) => b - a);
+  indexes.forEach(idx => {
+    const deletedOrder = workOrders.splice(idx, 1)[0];
+    db.collection("workOrders").doc(deletedOrder.workOrderNumber).delete()
+      .catch(error => console.error(`Firebase 刪除 ${deletedOrder.workOrderNumber} 錯誤:`, error));
+  });
+
+  saveToLocalStorage();
+  displayWorkOrders(workOrders);
+  alert('已刪除所選工單 (含 Firebase)');
+}
+
+    function editWorkOrder(id) {
+        const i = workOrders.findIndex(o => o.workOrderNumber === id);
+  if (i < 0) return;
+  const o = workOrders[i];
       document.getElementById('editIndex').value = i;
       document.getElementById('workOrderNumber').value = o.workOrderNumber;
       document.getElementById('ownerName').value = o.ownerName;
@@ -435,7 +476,7 @@
         const items = o.serviceItems.map((it,idx)=>`${idx+1}. ${it.name} - ${it.cost}`).join('<br>');
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><input type="checkbox" class="select-order" data-index="${gi}"></td>
+          <td><input type="checkbox" class="select-order" data-id="${o.workOrderNumber}"></td>
           <td>${o.workOrderNumber}</td>
           <td>${o.ownerName}</td>
           <td>${o.phoneNumber}</td>
@@ -448,8 +489,8 @@
           <td>${o.date}</td>
           <td>
             <div class="action-buttons">
-              <button onclick="editWorkOrder(${gi})">編輯</button>
-              <button onclick="deleteWorkOrder(${gi})">刪除</button>
+              <button onclick="editWorkOrder('${o.workOrderNumber}')">編輯</button>
+		<button onclick="deleteWorkOrder('${o.workOrderNumber}')">刪除</button>
             </div>
           </td>`;
         tbody.appendChild(tr);
