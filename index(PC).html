@@ -52,16 +52,12 @@
   <!-- 標題 + 切換按鈕 -->
   <div class="header">
     <h1>電動機車工單系統</h1>
-    <div id="authSection" style="margin-bottom:10px;">
-  <button id="loginBtn">Google 登入</button>
-  <button id="logoutBtn" style="display:none;">登出</button>
-  <span id="userEmail" style="margin-left:10px;"></span>
-</div>
     <div class="view-buttons">
       <button onclick="location.href='https://hermanl1106.github.io/Wutan/'">手機版</button>
       <button onclick="location.href='https://hermanl1106.github.io/Wutan/index(PC).html'">電腦版</button>
     </div>
   </div>
+
   <div class="main-container">
     <!-- 左側：輸入與控制 -->
     <div class="left-panel">
@@ -156,11 +152,11 @@
   </div>
 
   <script>
- const firebaseConfig = {
+    const firebaseConfig = {
       apiKey: "AIzaSyCJRG7xReo0_dx-ZaJhaUVIEU58JifmVAk",
       authDomain: "electric-bike-workorders.firebaseapp.com",
       projectId: "electric-bike-workorders",
-      storageBucket: "electric-bike-workorders.appspot.com",
+      storageBucket: "electric-bike-workorders.firebasestorage.app",
       messagingSenderId: "41212869744",
       appId: "1:41212869744:web:be69af07e77e816efb88b5",
       measurementId: "G-V3VTZZ0T59"
@@ -168,19 +164,7 @@
     firebase.initializeApp(firebaseConfig);
     firebase.analytics();
     const db = firebase.firestore();
-    const auth = firebase.auth();
-    const provider = new firebase.auth.GoogleAuthProvider();
     const CSV_PASSWORD = 'admin123';
-    let currentUser = null;
-
-    document.getElementById('loginBtn').onclick = () => auth.signInWithPopup(provider);
-    document.getElementById('logoutBtn').onclick = () => auth.signOut();
-    auth.onAuthStateChanged(user => {
-      currentUser = user;
-      document.getElementById('loginBtn').style.display = user ? 'none' : '';
-      document.getElementById('logoutBtn').style.display = user ? '' : 'none';
-      document.getElementById('userEmail').textContent = user ? `登入中：${user.email}` : '';
-    });
 
     window.addEventListener('DOMContentLoaded', () => {
       document.getElementById('orderDate').value = new Date().toISOString().slice(0,10);
@@ -476,46 +460,20 @@
       });
       renderPagination(totalPages);
     }
-    const auth = firebase.auth();
-const provider = new firebase.auth.GoogleAuthProvider();
-let currentUser = null;
-
-document.getElementById('loginBtn').addEventListener('click', () => {
-  auth.signInWithPopup(provider)
-    .then(result => {
-      currentUser = result.user;
-      updateAuthUI();
-    })
-    .catch(error => console.error(error));
-});
-
-document.getElementById('logoutBtn').addEventListener('click', () => {
-  auth.signOut().then(() => {
-    currentUser = null;
-    updateAuthUI();
-  });
-});
-
-function updateAuthUI() {
-  const userEmail = document.getElementById('userEmail');
-  const loginBtn = document.getElementById('loginBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-
-  if (auth.currentUser) {
-    userEmail.textContent = `登入中：${auth.currentUser.email}`;
-    loginBtn.style.display = 'none';
-    logoutBtn.style.display = '';
+/**
+ * 顯示／隱藏 CSV 匯入匯出區塊
+ * 會先要求密碼才能切換顯示狀態
+ */
+function toggleCSVControls() {
+  const pwd = prompt('請輸入密碼以顯示或隱藏 CSV 功能');
+  if (pwd === CSV_PASSWORD) {
+    const div = document.getElementById('csvControls');
+    div.style.display = div.style.display === 'none' ? 'block' : 'none';
   } else {
-    userEmail.textContent = '';
-    loginBtn.style.display = '';
-    logoutBtn.style.display = 'none';
+    alert('密碼錯誤');
   }
 }
 
-auth.onAuthStateChanged(user => {
-  currentUser = user;
-  updateAuthUI();
-});
   </script>
 </body>
 </html>
