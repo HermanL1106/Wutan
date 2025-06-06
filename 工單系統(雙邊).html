@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工單系統(電腦)</title>
+  <style>
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .view-buttons button {
+      margin-left: 10px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #ownerName {
+      background-color: #CAFFFF;
+    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    /* 兩欄布局 */
+    .main-container { display: flex; gap: 20px; }
+    .left-panel { flex: 1; }
+    .right-panel { flex: 1; }
+
+    label { display: block; margin-top: 10px; }
+    input, select { width: 100%; padding: 8px; margin-top: 5px; }
+    button { margin-top: 15px; padding: 10px 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; vertical-align: top; }
+    .service-items-container { margin-top: 10px; }
+    .service-item-row { display: flex; gap: 10px; margin-top: 5px; }
+    .service-item-row input { flex: 1; }
+    .remove-item { background: red; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+    .action-buttons { display: flex; justify-content: center; gap: 10px; }
+    th { position: sticky; top: 0; background: #f9f9f9; z-index: 1; }
+    /* 車牌 & 標題不換行 */
+    table td:nth-child(5), table thead th { white-space: nowrap; }
+    /* 分頁置底 */
+    #pagination { margin-top: 10px; text-align: center; }
+  </style>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <!-- 標題 + 切換按鈕 -->
+  <div class="header">
+    <h1>電動機車工單系統</h1>
+    <div class="view-buttons">
+      <button onclick="location.href='https://hermanl1106.github.io/Wutan/'">手機版</button>
+      <button onclick="location.href='https://hermanl1106.github.io/Wutan/index(PC).html'">電腦版</button>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <!-- 左側：輸入與控制 -->
+    <div class="left-panel">
+      <div id="csvControls" style="display:none; margin-bottom:20px;">
+        <input type="file" id="importFile" accept=".csv">
+        <button onclick="importWorkOrders()">匯入 CSV 工單</button>
+        <button onclick="exportWorkOrders()">匯出工單 CSV</button>
+      </div>
+      <button type="button" onclick="toggleCSVControls()">顯示/隱藏 CSV 功能</button>
+      <form id="workOrderForm">
+        <input type="hidden" id="editIndex">
+        <label>工單編號：</label>
+        <input type="text" id="workOrderNumber" readonly>
+        <label>日期：</label>
+        <input type="date" id="orderDate" required>
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label>車主姓名：</label>
+            <input type="text" id="ownerName">
+          </div>
+          <div style="flex:1;">
+            <label>聯絡電話：</label>
+            <input type="text" id="phoneNumber">
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label>車牌號碼：</label>
+            <input type="text" id="plateNumber" required>
+          </div>
+          <div style="flex:1;">
+            <label>里程數：</label>
+            <input type="number" id="mileage" required>
+          </div>
+        </div>
+        <label>維修項目：</label>
+        <div id="serviceItems" class="service-items-container"></div>
+        <button type="button" onclick="addServiceItem()">新增項目</button>
+        <div id="serviceTotal" style="margin-top:8px; font-weight:bold;">
+          總金額：<span id="serviceTotalAmount">0</span>
+        </div>
+        <label>技師姓名：</label>
+        <select id="technicianName" required>
+          <option>Kevin</option><option>Hank</option>
+        </select>
+        <label>付款方式：</label>
+        <select id="status">
+          <option>現金</option><option>刷卡</option><option>轉帳</option><option>街口</option>
+        </select>
+        <div style="margin-top:15px;">
+          <button type="submit">儲存工單</button>
+          <button type="button" onclick="resetForm()">重設</button>
+          <button type="button" onclick="deleteSelectedOrders()">刪除所選工單</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 右側：列表顯示 -->
+    <div class="right-panel">
+      <!-- 搜尋列 -->
+      <div style="margin-bottom:10px; display:flex; gap:10px;">
+        <input type="text" id="searchPlate" placeholder="搜尋車牌或工單編號" style="flex:1; max-width:200px;">
+        <input type="date" id="startDate" style="width:140px;">
+        <input type="date" id="endDate"   style="width:140px;">
+        <button onclick="searchOrders()">搜尋</button>
+        <button onclick="resetSearch()">重設</button>
+      </div>
+      <!-- 顯示筆數 -->
+      <div style="margin-bottom:10px; display:flex; align-items:center; gap:5px;">
+        <label for="pageSizeSelect">顯示筆數：</label>
+        <select id="pageSizeSelect" onchange="changePageSize()">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="30" selected>30</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <table id="workOrderTable">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)"></th>
+            <th>工單編號</th><th>車主</th><th>電話</th><th>車牌</th>
+            <th>里程數</th><th>維修項目</th><th>總金額</th>
+            <th>技師</th><th>付款方式</th><th>日期</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="pagination"></div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCJRG7xReo0_dx-ZaJhaUVIEU58JifmVAk",
+      authDomain: "electric-bike-workorders.firebaseapp.com",
+      projectId: "electric-bike-workorders",
+      storageBucket: "electric-bike-workorders.firebasestorage.app",
+      messagingSenderId: "41212869744",
+      appId: "1:41212869744:web:be69af07e77e816efb88b5",
+      measurementId: "G-V3VTZZ0T59"
+    };
+    firebase.initializeApp(firebaseConfig);
+    firebase.analytics();
+    const db = firebase.firestore();
+    const CSV_PASSWORD = 'admin123';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('orderDate').value = new Date().toISOString().slice(0,10);
+      addServiceItem();
+      loadAndRender();
+    });
+
+    let workOrders = JSON.parse(localStorage.getItem('workOrders')||'[]');
+    let currentPage = 1;
+    let pageSize = 30;
+
+    function loadAndRender(){
+      db.collection("workOrders").get().then(snap=>{
+        workOrders = snap.docs.map(d=>d.data());
+        saveToLocalStorage();
+        displayWorkOrders(workOrders);
+      }).catch(()=>displayWorkOrders(workOrders));
+    }
+
+    function saveToLocalStorage(){
+      localStorage.setItem('workOrders', JSON.stringify(workOrders));
+    }
+
+    function updateServiceTotal(){
+      const inputs=document.querySelectorAll('.item-cost');
+      const sum=Array.from(inputs).reduce((a,i)=>a+(parseFloat(i.value)||0),0);
+      document.getElementById('serviceTotalAmount').textContent=sum;
+    }
+
+    function addServiceItem(item={name:'',cost:''}){
+      const div=document.createElement('div');
+      div.className='service-item-row';
+      div.innerHTML=`
+        <input type="text" class="item-name" placeholder="項目名稱" value="${item.name}">
+        <input type="text" class="item-cost" placeholder="金額" value="${item.cost}">
+        <button type="button" class="remove-item">刪除</button>`;
+      document.getElementById('serviceItems').appendChild(div);
+      const costI=div.querySelector('.item-cost'), delB=div.querySelector('.remove-item');
+      costI.addEventListener('input', updateServiceTotal);
+      costI.addEventListener('keypress', e=>{
+        if (e.key==='Enter'){
+          e.preventDefault();
+          updateServiceTotal();
+          addServiceItem();
+          div.nextSibling.querySelector('.item-name').focus();
+        }
+      });
+      delB.addEventListener('click', ()=>{ div.remove(); updateServiceTotal(); });
+      updateServiceTotal();
+    }
+
+    document.getElementById('workOrderForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      const ownerVal = document.getElementById('ownerName').value.trim()||'NA';
+      const phoneVal = document.getElementById('phoneNumber').value.trim()||'NA';
+      const idx = document.getElementById('editIndex').value;
+      const serviceItems = Array.from(document.querySelectorAll('.service-item-row')).map(r=>({
+        name:r.querySelector('.item-name').value.trim(),
+        cost:parseFloat(r.querySelector('.item-cost').value)
+      }));
+      const totalAmount=serviceItems.reduce((a,i)=>a+(i.cost||0),0);
+      const dateVal = document.getElementById('orderDate').value;
+      const datePrefix = dateVal.replace(/-/g,'');
+      const monthKey = dateVal.slice(0,7);
+      let seqStr;
+      if(idx!==''){
+        seqStr = workOrders[idx].workOrderNumber.split('-')[1];
+      } else {
+        seqStr = String(workOrders.filter(o=>o.date.startsWith(monthKey)).length+1).padStart(3,'0');
+      }
+      const newOrder = {
+        workOrderNumber:`${datePrefix}-${seqStr}`,
+        ownerName:ownerVal,
+        phoneNumber:phoneVal,
+        plateNumber:document.getElementById('plateNumber').value.trim(),
+        mileage:document.getElementById('mileage').value.trim(),
+        serviceItems,
+        technicianName:document.getElementById('technicianName').value,
+        status:document.getElementById('status').value,
+        date:dateVal,
+        totalAmount
+      };
+      if(idx==='') workOrders.push(newOrder); else workOrders[idx]=newOrder;
+      saveToLocalStorage();
+      displayWorkOrders(workOrders);
+      db.collection("workOrders").doc(newOrder.workOrderNumber).set(newOrder)
+        .then(()=>alert("工單已同步到 Firebase！"))
+        .catch(e=>console.error(e));
+      ['editIndex','ownerName','phoneNumber','plateNumber','mileage']
+        .forEach(id=>document.getElementById(id).value='');
+      document.getElementById('serviceItems').innerHTML='';
+      updateServiceTotal();
+      addServiceItem();
+      document.getElementById('plateNumber').focus();
+    });
+
+    function resetForm(){
+      document.getElementById('workOrderForm').reset();
+      document.getElementById('serviceItems').innerHTML='';
+      document.getElementById('editIndex').value='';
+      document.getElementById('orderDate').value=new Date().toISOString().slice(0,10);
+      updateServiceTotal();
+      addServiceItem();
+    }
+
+    function editWorkOrder(id){
+      // 由 workOrderNumber 找到 index
+      const i = workOrders.findIndex(o=>o.workOrderNumber===id);
+      if(i<0) return;
+      const o=workOrders[i];
+      document.getElementById('editIndex').value=i;
+      document.getElementById('workOrderNumber').value=o.workOrderNumber;
+      document.getElementById('orderDate').value=o.date;
+      document.getElementById('ownerName').value=o.ownerName;
+      document.getElementById('phoneNumber').value=o.phoneNumber;
+      document.getElementById('plateNumber').value=o.plateNumber;
+      document.getElementById('mileage').value=o.mileage;
+      document.getElementById('technicianName').value=o.technicianName;
+      document.getElementById('status').value=o.status;
+      document.getElementById('serviceItems').innerHTML='';
+      o.serviceItems.forEach(si=>addServiceItem(si));
+    }
+
+    function deleteWorkOrder(id){
+      const pwd=prompt('請輸入密碼以刪除此工單');
+      if(pwd!==CSV_PASSWORD){alert('密碼錯誤');return;}
+      if(!confirm('確定要刪除此工單嗎？')) return;
+      const i=workOrders.findIndex(o=>o.workOrderNumber===id);
+      if(i<0)return;
+      const d=workOrders.splice(i,1)[0];
+      saveToLocalStorage();
+      displayWorkOrders(workOrders);
+      db.collection("workOrders").doc(d.workOrderNumber).delete();
+    }
+
+    function deleteSelectedOrders(){
+      const pwd=prompt('請輸入密碼以刪除所選工單');
+      if(pwd!==CSV_PASSWORD){alert('密碼錯誤');return;}
+      const sels=Array.from(document.querySelectorAll('.select-order:checked'));
+      if(!sels.length){alert('請先勾選');return;}
+      if(!confirm(`確定刪除${sels.length}筆?`))return;
+      sels.map(cb=>cb.dataset.id).forEach(id=>{
+        const i=workOrders.findIndex(o=>o.workOrderNumber===id);
+        if(i>=0){
+          db.collection("workOrders").doc(workOrders.splice(i,1)[0].workOrderNumber).delete();
+        }
+      });
+      saveToLocalStorage();
+      displayWorkOrders(workOrders);
+    }
+
+    function toggleSelectAll(src){
+      document.querySelectorAll('.select-order').forEach(cb=>cb.checked=src.checked);
+    }
+
+    function resetSearch(){
+      document.getElementById('searchPlate').value='';
+      document.getElementById('startDate').value='';
+      document.getElementById('endDate').value='';
+      displayWorkOrders(workOrders);
+    }
+
+    function searchOrders(){
+      const p=document.getElementById('searchPlate').value.trim();
+      const s=document.getElementById('startDate').value;
+      const e=document.getElementById('endDate').value;
+      const res=workOrders.filter(o=>{
+        const mp=p?(o.plateNumber.includes(p)||o.workOrderNumber.includes(p)):true;
+        let md=true;
+        if(s&&e) md=o.date>=s&&o.date<=e;
+        else if(s) md=o.date>=s;
+        else if(e) md=o.date<=e;
+        return mp&&md;
+      });
+      if(!res.length)alert('查無相關');
+      displayWorkOrders(res);
+    }
+
+    function importWorkOrders(){
+      const f=document.getElementById('importFile').files[0];
+      if(!f){alert('請選CSV');return;}
+      const r=new FileReader();
+      r.onload=e=>{
+        e.target.result.replace(/\r/g,'').trim().split('\n').slice(1)
+          .forEach(line=>{
+            const p=line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
+            if(p&&p.length>=10){
+              const [w,o,ph,pl,mi,si,ta,tn,st,dt]=p.map(x=>x.replace(/^"|"$/g,'').trim());
+              const items=si.split(';').map(x=>({name:x.trim(),cost:null}));
+              const no={ workOrderNumber:w, ownerName:o, phoneNumber:ph,
+                         plateNumber:pl, mileage:mi, serviceItems:items,
+                         technicianName:tn, status:st, date:dt,
+                         totalAmount:parseFloat(ta) };
+              workOrders.push(no);
+              db.collection("workOrders").doc(no.workOrderNumber).set(no);
+            }
+          });
+        saveToLocalStorage();
+        displayWorkOrders(workOrders);
+        alert('匯入完成');
+      };
+      r.readAsText(f);
+    }
+
+    function exportWorkOrders(){
+      const rows=document.querySelectorAll('#workOrderTable tbody tr');
+      if(!rows.length){alert('無資料');return;}
+      let csv='工單編號,車主,電話,車牌,里程數,維修項目,總金額,技師,付款方式,日期\n';
+      rows.forEach(r=>{
+        const td=r.querySelectorAll('td'),
+              vals=Array.from(td).slice(1,11).map((c,i)=>{
+                let t=c.innerText;
+                if(i===5) t=`"${t.replace(/\n/g,'; ')}"`;
+                return t;
+              });
+        csv+=vals.join(',')+'\n';
+      });
+      const b=new Blob(['\ufeff'+csv],{type:'text/csv'}), a=document.createElement('a');
+      a.href=URL.createObjectURL(b); a.download='work_orders.csv'; a.click();
+    }
+
+    function renderPagination(tp){
+      const pg=document.getElementById('pagination');
+      pg.innerHTML='';
+      const prev=document.createElement('button');
+      prev.textContent='上一頁'; prev.disabled=currentPage===1;
+      prev.onclick=()=>{if(currentPage>1){currentPage--;displayWorkOrders(workOrders);} };
+      pg.appendChild(prev);
+      for(let i=1;i<=tp;i++){
+        const btn=document.createElement('button');
+        btn.textContent=i; btn.disabled=i===currentPage;
+        btn.onclick=()=>{currentPage=i;displayWorkOrders(workOrders);};
+        pg.appendChild(btn);
+      }
+      const next=document.createElement('button');
+      next.textContent='下一頁'; next.disabled=currentPage===tp;
+      next.onclick=()=>{if(currentPage<tp){currentPage++;displayWorkOrders(workOrders);} };
+      pg.appendChild(next);
+      const info=document.createElement('div');
+      info.style.marginTop='10px';
+      info.textContent=`第 ${currentPage} / ${tp} 頁`;
+      pg.appendChild(info);
+    }
+
+    function changePageSize(){
+      pageSize=parseInt(document.getElementById('pageSizeSelect').value,10);
+      currentPage=1;
+      displayWorkOrders(workOrders);
+    }
+
+    // 初始載入並渲染
+    db.collection("workOrders").get().then(snap=>{
+      workOrders = snap.docs.map(d=>d.data());
+      saveToLocalStorage();
+      displayWorkOrders(workOrders);
+      addServiceItem();
+    }).catch(()=>{
+      displayWorkOrders(workOrders);
+      addServiceItem();
+    });
+
+    function displayWorkOrders(orders){
+      orders.sort((a,b)=>{
+        const d=b.date.localeCompare(a.date);
+        return d!==0? d: b.workOrderNumber.localeCompare(a.workOrderNumber);
+      });
+      const tbody=document.querySelector('#workOrderTable tbody');
+      tbody.innerHTML='';
+      const totalPages=Math.ceil(orders.length/pageSize);
+      const start=(currentPage-1)*pageSize;
+      orders.slice(start,start+pageSize).forEach(o=>{
+        const items=o.serviceItems.map((it,i)=>`${i+1}. ${it.name} - ${it.cost}`).join('<br>');
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td><input type="checkbox" class="select-order" data-id="${o.workOrderNumber}"></td>
+          <td>${o.workOrderNumber}</td>
+          <td>${o.ownerName}</td>
+          <td>${o.phoneNumber}</td>
+          <td>${o.plateNumber}</td>
+          <td>${o.mileage}</td>
+          <td>${items}</td>
+          <td>${o.totalAmount}</td>
+          <td>${o.technicianName}</td>
+          <td>${o.status}</td>
+          <td>${o.date}</td>
+          <td>
+            <div class="action-buttons">
+              <button onclick="editWorkOrder('${o.workOrderNumber}')">編輯</button>
+              <button onclick="deleteWorkOrder('${o.workOrderNumber}')">刪除</button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+      renderPagination(totalPages);
+    }
+/**
+ * 顯示／隱藏 CSV 匯入匯出區塊
+ * 會先要求密碼才能切換顯示狀態
+ */
+function toggleCSVControls() {
+  const pwd = prompt('請輸入密碼以顯示或隱藏 CSV 功能');
+  if (pwd === CSV_PASSWORD) {
+    const div = document.getElementById('csvControls');
+    div.style.display = div.style.display === 'none' ? 'block' : 'none';
+  } else {
+    alert('密碼錯誤');
+  }
+}
+
+  </script>
+</body>
+</html>
